@@ -26,7 +26,7 @@ model_config = read_json('squad_ru_bert_infer.json')
 model = build_model(model_config, download=True)
 mess_context = Context('')
 html_context = Context('')
-with open('data.txt', 'r') as file:
+with open('text.txt', 'r') as file:
     data = file.read().replace('\n', ' ')
 file_context = Context(data)
 
