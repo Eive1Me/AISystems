@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import telebot
 import os
 from deeppavlov import build_model, configs
+from deeppavlov.core.common.file import read_json
 
 load_dotenv()
 
@@ -19,7 +20,8 @@ class Context:
     def get_context(self):
         return self.c
 
-model = build_model(configs.squad.squad_bert_infer, download=True)
+model_config = read_json('squad_ru_bert_infer.json')
+model = build_model(model_config, download=True)
 mess_context = Context('')
 with open('data.txt', 'r') as file:
     data = file.read().replace('\n', ' ')
@@ -32,6 +34,14 @@ def extract_arg(arg):
         return arg[arg.index(' '):]
     else:
         raise Exception
+
+
+#Считать файл заново
+@bot.message_handler(commands=['reload_file'])
+def reload_file(message):
+    with open('data.txt', 'r') as file:
+        data = file.read().replace('\n', ' ')
+    file_context.set_context(data)
 
 
 # Обработка '/start' и '/help'
@@ -56,7 +66,7 @@ def ask_question(message):
 #Обработка вопросов по тексту из файла
 @bot.message_handler(content_types=['text'])
 def ask_question(message):
-    bot.reply_to(message, model([f'{file_context.get_context()}'], [f'{message.text}'])[0][0])
+    bot.reply_to(message, 'Ответ: ' + model([f'{file_context.get_context()}'], [f'{message.text}'])[0][0])
 
 
 print("I\'m listening!")
