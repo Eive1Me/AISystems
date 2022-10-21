@@ -42,7 +42,7 @@ def extract_arg(arg):
 #Считать файл заново
 @bot.message_handler(commands=['reload_file'])
 def reload_file(message):
-    with open('data.txt', 'r') as file:
+    with open('text.txt', 'r') as file:
         data = file.read().replace('\n', ' ')
     file_context.set_context(data)
     bot.reply_to(message, 'Контекст установлен!')
