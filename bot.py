@@ -6,6 +6,7 @@ from deeppavlov import build_model, configs
 from deeppavlov.core.common.file import read_json
 from bs4 import BeautifulSoup
 from urllib.request import Request, urlopen
+from googlesearch import search
 
 load_dotenv()
 
@@ -60,6 +61,20 @@ def send_welcome(message):
 @bot.message_handler(commands=['parse'])
 def parse_html(message):
     req = Request(extract_arg(message.text))
+    html_page = urlopen(req)
+    soup = BeautifulSoup(html_page, "html.parser")
+    html_text = soup.get_text()
+    html_context.set_context(html_text)
+    bot.reply_to(message, 'Контекст установлен!')
+
+
+# Обработка '/search'
+@bot.message_handler(commands=['search'])
+def search_for(message):
+    query = extract_arg(message.text)
+    for j in search(query, num=1, stop=1):
+        req = (j)
+    print(req)
     html_page = urlopen(req)
     soup = BeautifulSoup(html_page, "html.parser")
     html_text = soup.get_text()
