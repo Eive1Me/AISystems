@@ -2,34 +2,56 @@ from time import sleep
 from dotenv import load_dotenv
 import telebot
 import os
-from deeppavlov import build_model, configs
+import requests
+from deeppavlov import build_model, train_model
 from deeppavlov.core.common.file import read_json
-from bs4 import BeautifulSoup
-from urllib.request import Request, urlopen
-from googlesearch import search
+from multiprocessing import Process, Queue
 
 load_dotenv()
-
 token = os.getenv('TELEGRAM_BOT_TOKEN')
 bot = telebot.TeleBot(token)
 
-class Context:
-    def __init__(self, c):
-        self.c = c
 
-    def set_context(self, arg):
-        self.c = arg
+#Настройка моделей
+intent_catcher_model_config = read_json('intent_catcher.json')
 
-    def get_context(self):
-        return self.c
 
-model_config = read_json('squad_ru_bert_infer.json')
-model = build_model(model_config, download=True)
-mess_context = Context('')
-html_context = Context('')
-with open('text.txt', 'r') as file:
-    data = file.read().replace('\n', ' ')
-file_context = Context(data)
+#Основная обработка сообщений
+@bot.message_handler(content_types=['text'])
+def get_text_message(message):
+    queue.put(message.text)
+    intent_result = queue.get()
+    print("Сообщение:", message.text)
+    print("Интент:", intent_result[0])
+
+    if intent_result[0] == 'cqa':
+        bot.reply_to(message, "Что вы хотите знать?")
+        bot.register_next_step_handler(message,launch_cqa)
+        print("1")
+    elif intent_result[0] == 'start':
+        send_welcome(message)
+        print("2")
+    elif intent_result[0] == 'cat':
+        url = get_url()
+        bot.send_photo(message.chat.id, url)
+        print("3")
+    else:
+        bot.reply_to(message, "Я не понимаю, что Вы от меня хотите:(")
+
+
+#Обработка запроса к cqa
+def launch_cqa(message):
+    messageText = message.text
+    os.system("python cqa.py \"" + str(message.chat.id) + "\" " + "\"" + messageText + "\"")
+
+
+#Тренировка модели
+def work_with_intent_catcher_model(q):
+    intent_catcher_model = build_model(intent_catcher_model_config)
+
+    q.put(1)
+    while True:
+        q.put(intent_catcher_model([q.get()]))
 
 
 # Возвращает аргумент из сообщения от телеграм-бота (/c <context> -- вернёт context)
@@ -40,73 +62,24 @@ def extract_arg(arg):
         raise Exception
 
 
-#Считать файл заново
-@bot.message_handler(commands=['reload_file'])
-def reload_file(message):
-    with open('text.txt', 'r') as file:
-        data = file.read().replace('\n', ' ')
-    file_context.set_context(data)
-    bot.reply_to(message, 'Контекст установлен!')
-
-
 # Обработка '/start' и '/help'
 @bot.message_handler(commands=['help', 'start'])
 def send_welcome(message):
-    bot.reply_to(message, "🌸 Привет! 🌸\n\n🧷 Задавай вопросы в сообщениях, чтобы получать ответы по тексту из файла.\n" + 
-    "🧷 Установи контекст через /c [текст] и задавай вопросы через /q [вопрос], чтобы получать ответы по введённому тексту.\n" + 
-    "🧷 Используй /parse [ссылка] для установки контекста с сайта и /ask [вопрос], чтобы получать по нему ответы.\n\nПриятного пользования!")
+    bot.reply_to(message, "🌸 Привет! 🌸\n\n🧷 Говори, чем интересуешься, я со всем помогу.\n" + 
+    "🧷 Я могу рассказать про то, что записано в файле, если хочешь (сейчас там про кфу). 👉👈 \n" + 
+    "🧷 Ну, а если тебе совсем скучно могу отправить фоточки котиков!")
 
 
-# Обработка '/parse'
-@bot.message_handler(commands=['parse'])
-def parse_html(message):
-    req = Request(extract_arg(message.text))
-    html_page = urlopen(req)
-    soup = BeautifulSoup(html_page, "html.parser")
-    html_text = soup.get_text()
-    html_context.set_context(html_text)
-    bot.reply_to(message, 'Контекст установлен!')
+def get_url():
+    contents = requests.get('https://aws.random.cat/meow').json()
+    image_url = contents['file']
+    return image_url
 
 
-# Обработка '/search'
-@bot.message_handler(commands=['search'])
-def search_for(message):
-    query = extract_arg(message.text)
-    for j in search(query, num=1, stop=1):
-        req = (j)
-    print(req)
-    html_page = urlopen(req)
-    soup = BeautifulSoup(html_page, "html.parser")
-    html_text = soup.get_text()
-    html_context.set_context(html_text)
-    bot.reply_to(message, 'Контекст установлен!')
-
-
-#Обработка вопросов по контексту со страницы
-@bot.message_handler(commands=['ask'])
-def ask_html(message):
-    bot.reply_to(message, 'Ответ: \n' + model([f'{html_context.get_context()}'], [f'{extract_arg(message.text)}'])[0][0])
-
-
-#Обработка установки нового контекста
-@bot.message_handler(commands=['c'])
-def set_main_context(message):
-    mess_context.set_context(extract_arg(message.text))
-    bot.reply_to(message, 'Контекст установлен!')
-
-
-#Обработка вопросов по новому контексту
-@bot.message_handler(commands=['q'])
-def ask_question(message):
-    bot.reply_to(message, 'Ответ: \n' + model([f'{mess_context.get_context()}'], [f'{extract_arg(message.text)}'])[0][0])
-
-
-#Обработка вопросов по тексту из файла
-@bot.message_handler(content_types=['text'])
-def ask_question(message):
-    bot.reply_to(message, 'Ответ: \n' + model([f'{file_context.get_context()}'], [f'{message.text}'])[0][0])
-
-
+queue = Queue()
+child_process = Process(target=work_with_intent_catcher_model, args=(queue,))
+child_process.start()
+queue.get()
 print("I\'m listening!")
 while True:
     try:
